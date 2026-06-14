@@ -45,7 +45,7 @@ terraform:plan:
 frontend:deploy:
   stage: deploy
   image:
-    name: amazon/aws-cli:2
+    name: amazon/aws-cli:latest
     entrypoint: [""]
   rules:
     - when: manual
@@ -56,4 +56,3 @@ frontend:deploy:
     - sed "s|__INCIDENTOPS_API_URL__|$INCIDENTOPS_API_URL|g" frontend/config.template.js > frontend/config.js
     - aws s3 sync frontend/ s3://$SITE_BUCKET_NAME --delete --exclude "config.template.js"
     - aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"
-
