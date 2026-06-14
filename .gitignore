@@ -1,0 +1,11 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+infra/terraform/environments/*/build/
+infra/terraform/environments/*/api.zip
+frontend/config.js
+__pycache__/
+.pytest_cache/
+.DS_Store

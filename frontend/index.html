@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IncidentOps</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <div>
+          <p class="eyebrow">AWS Serverless Portfolio</p>
+          <h1>IncidentOps</h1>
+          <p class="lead">Suivi minimal d'incidents pour demontrer une architecture cloud securisee, scalable et peu couteuse.</p>
+        </div>
+
+        <form id="incident-form" class="form">
+          <label>
+            Titre
+            <input id="title" name="title" placeholder="API latency elevated" required />
+          </label>
+
+          <label>
+            Severite
+            <select id="severity" name="severity">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+
+          <button type="submit">Creer l'incident</button>
+        </form>
+      </section>
+
+      <section class="list">
+        <div class="list-header">
+          <h2>Incidents</h2>
+          <button id="refresh" type="button">Rafraichir</button>
+        </div>
+        <div id="incidents" class="items"></div>
+      </section>
+    </main>
+
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

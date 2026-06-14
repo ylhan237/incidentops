@@ -1,0 +1,59 @@
+stages:
+  - test
+  - validate
+  - plan
+  - deploy
+
+variables:
+  TF_ROOT: infra/terraform/environments/dev
+  AWS_DEFAULT_REGION: us-east-1
+
+python:compile:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - python -m py_compile src/api/handler.py
+
+terraform:fmt:
+  stage: validate
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  script:
+    - terraform -chdir=$TF_ROOT fmt -check
+
+terraform:validate:
+  stage: validate
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  script:
+    - terraform -chdir=$TF_ROOT init -backend=false
+    - terraform -chdir=$TF_ROOT validate
+
+terraform:plan:
+  stage: plan
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  rules:
+    - when: manual
+  script:
+    - terraform -chdir=$TF_ROOT init
+    - terraform -chdir=$TF_ROOT plan
+
+frontend:deploy:
+  stage: deploy
+  image:
+    name: amazon/aws-cli:2
+    entrypoint: [""]
+  rules:
+    - when: manual
+  script:
+    - test -n "$INCIDENTOPS_API_URL"
+    - test -n "$SITE_BUCKET_NAME"
+    - test -n "$CLOUDFRONT_DISTRIBUTION_ID"
+    - sed "s|__INCIDENTOPS_API_URL__|$INCIDENTOPS_API_URL|g" frontend/config.template.js > frontend/config.js
+    - aws s3 sync frontend/ s3://$SITE_BUCKET_NAME --delete --exclude "config.template.js"
+    - aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"
+
