@@ -6,7 +6,7 @@ stages:
 
 variables:
   TF_ROOT: infra/terraform/environments/dev
-  AWS_DEFAULT_REGION: us-east-1
+  AWS_DEFAULT_REGION: eu-west-1
 
 python:compile:
   stage: test
@@ -47,12 +47,23 @@ frontend:deploy:
   image:
     name: amazon/aws-cli:latest
     entrypoint: [""]
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: sts.amazonaws.com
   rules:
     - when: manual
   script:
     - test -n "$INCIDENTOPS_API_URL"
     - test -n "$SITE_BUCKET_NAME"
     - test -n "$CLOUDFRONT_DISTRIBUTION_ID"
+    - |
+      if [ -n "$AWS_ROLE_ARN" ]; then
+        aws_sts_output=$(aws sts assume-role-with-web-identity --role-arn "$AWS_ROLE_ARN" --role-session-name "GitLabRunner-${CI_PROJECT_ID}-${CI_PIPELINE_ID}" --web-identity-token "$GITLAB_OIDC_TOKEN" --duration-seconds 3600 --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)
+        export AWS_ACCESS_KEY_ID=$(echo "$aws_sts_output" | awk '{print $1}')
+        export AWS_SECRET_ACCESS_KEY=$(echo "$aws_sts_output" | awk '{print $2}')
+        export AWS_SESSION_TOKEN=$(echo "$aws_sts_output" | awk '{print $3}')
+      fi
+    - aws sts get-caller-identity
     - sed "s|__INCIDENTOPS_API_URL__|$INCIDENTOPS_API_URL|g" frontend/config.template.js > frontend/config.js
     - aws s3 sync frontend/ s3://$SITE_BUCKET_NAME --delete --exclude "config.template.js"
     - aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"

@@ -1,4 +1,11 @@
-aws_region   = "us-east-1"
+aws_region   = "eu-west-1"
 project_name = "incidentops"
 environment  = "dev"
 
+# Enable after replacing gitlab_project_path with your GitLab namespace/project.
+enable_gitlab_oidc  = false
+gitlab_project_path = "your-group/your-project"
+gitlab_deploy_branch = "main"
+
+log_retention_days = 14
+alarm_email        = ""

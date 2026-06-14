@@ -1,5 +1,6 @@
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
+  gitlab_host = replace(replace(var.gitlab_url, "https://", ""), "http://", "")
 
   common_tags = {
     Project     = var.project_name
@@ -232,6 +233,21 @@ resource "aws_apigatewayv2_stage" "default" {
   name        = "$default"
   auto_deploy = true
 
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+      integrationErr = "$context.integrationErrorMessage"
+    })
+  }
+
   tags = local.common_tags
 }
 
@@ -241,4 +257,153 @@ resource "aws_lambda_permission" "api_gateway" {
   function_name = aws_lambda_function.api.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
+}
+
+resource "aws_cloudwatch_log_group" "api_access" {
+  name              = "/aws/apigateway/${local.name_prefix}-api-access-${random_id.suffix.hex}"
+  retention_in_days = var.log_retention_days
+
+  tags = local.common_tags
+}
+
+resource "aws_sns_topic" "alarms" {
+  count = var.alarm_email != "" ? 1 : 0
+
+  name = "${local.name_prefix}-alarms"
+
+  tags = local.common_tags
+}
+
+resource "aws_sns_topic_subscription" "alarm_email" {
+  count = var.alarm_email != "" ? 1 : 0
+
+  topic_arn = aws_sns_topic.alarms[0].arn
+  protocol  = "email"
+  endpoint  = var.alarm_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  alarm_name          = "${local.name_prefix}-lambda-errors"
+  alarm_description   = "Triggers when the incidents Lambda returns errors."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.api.function_name
+  }
+
+  alarm_actions = var.alarm_email != "" ? [aws_sns_topic.alarms[0].arn] : []
+  ok_actions    = var.alarm_email != "" ? [aws_sns_topic.alarms[0].arn] : []
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_5xx" {
+  alarm_name          = "${local.name_prefix}-api-5xx"
+  alarm_description   = "Triggers when API Gateway returns server-side errors."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "5xx"
+  namespace           = "AWS/ApiGateway"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = aws_apigatewayv2_api.api.id
+  }
+
+  alarm_actions = var.alarm_email != "" ? [aws_sns_topic.alarms[0].arn] : []
+  ok_actions    = var.alarm_email != "" ? [aws_sns_topic.alarms[0].arn] : []
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_openid_connect_provider" "gitlab" {
+  count = var.enable_gitlab_oidc ? 1 : 0
+
+  url            = var.gitlab_url
+  client_id_list = [var.gitlab_oidc_audience]
+
+  tags = local.common_tags
+}
+
+data "aws_iam_policy_document" "gitlab_deploy_assume_role" {
+  count = var.enable_gitlab_oidc ? 1 : 0
+
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.gitlab[0].arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.gitlab_host}:aud"
+      values   = [var.gitlab_oidc_audience]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.gitlab_host}:sub"
+      values   = ["project_path:${var.gitlab_project_path}:ref_type:branch:ref:${var.gitlab_deploy_branch}"]
+    }
+  }
+}
+
+resource "aws_iam_role" "gitlab_deploy" {
+  count = var.enable_gitlab_oidc ? 1 : 0
+
+  name               = "${local.name_prefix}-gitlab-deploy-role"
+  assume_role_policy = data.aws_iam_policy_document.gitlab_deploy_assume_role[0].json
+
+  tags = local.common_tags
+}
+
+data "aws_iam_policy_document" "gitlab_deploy" {
+  count = var.enable_gitlab_oidc ? 1 : 0
+
+  statement {
+    actions = [
+      "s3:DeleteObject",
+      "s3:GetObject",
+      "s3:ListBucket",
+      "s3:PutObject"
+    ]
+
+    resources = [
+      aws_s3_bucket.site.arn,
+      "${aws_s3_bucket.site.arn}/*"
+    ]
+  }
+
+  statement {
+    actions   = ["cloudfront:CreateInvalidation"]
+    resources = [aws_cloudfront_distribution.site.arn]
+  }
+}
+
+resource "aws_iam_policy" "gitlab_deploy" {
+  count = var.enable_gitlab_oidc ? 1 : 0
+
+  name   = "${local.name_prefix}-gitlab-deploy"
+  policy = data.aws_iam_policy_document.gitlab_deploy[0].json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "gitlab_deploy" {
+  count = var.enable_gitlab_oidc ? 1 : 0
+
+  role       = aws_iam_role.gitlab_deploy[0].name
+  policy_arn = aws_iam_policy.gitlab_deploy[0].arn
 }

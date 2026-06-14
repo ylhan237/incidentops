@@ -34,6 +34,22 @@ Le mode `PAY_PER_REQUEST` evite de dimensionner la capacite au depart. C'est ada
 
 La Lambda a uniquement les droits necessaires pour lire et ecrire dans la table DynamoDB du projet. Les logs CloudWatch passent par la policy geree AWS de base pour Lambda.
 
+### Observabilite avec CloudWatch
+
+CloudWatch centralise les logs et les metriques AWS. Le projet utilise deux log groups :
+
+- un log group Lambda cree automatiquement par AWS Lambda pour les logs d'execution ;
+- un log group API Gateway cree par Terraform pour les logs d'acces HTTP.
+
+La retention du log group API Gateway est limitee avec `log_retention_days` pour eviter de garder des logs inutilement longtemps et de payer pour de l'historique peu utile en environnement `dev`.
+
+Deux alarmes CloudWatch surveillent les erreurs :
+
+- `lambda_errors` surveille les erreurs de la fonction Lambda ;
+- `api_5xx` surveille les erreurs serveur retournees par API Gateway.
+
+Si `alarm_email` est renseigne, Terraform cree aussi un topic SNS. SNS signifie Simple Notification Service : c'est le service AWS qui envoie les notifications, ici par email.
+
 ## Risques et ameliorations
 
 | Risque | Mitigation initiale | Extension possible |
@@ -42,4 +58,3 @@ La Lambda a uniquement les droits necessaires pour lire et ecrire dans la table 
 | API publique | Validation stricte | Cognito + authorizer |
 | Erreurs non detectees | Logs CloudWatch | alarmes + dashboards |
 | Suppression accidentelle | Deletion protection logique | backups DynamoDB/PITR |
-

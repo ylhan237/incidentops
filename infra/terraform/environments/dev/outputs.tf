@@ -22,3 +22,23 @@ output "incidents_table_name" {
   description = "DynamoDB table used by the incidents API."
   value       = aws_dynamodb_table.incidents.name
 }
+
+output "gitlab_deploy_role_arn" {
+  description = "IAM role ARN for GitLab OIDC deployments."
+  value       = var.enable_gitlab_oidc ? aws_iam_role.gitlab_deploy[0].arn : null
+}
+
+output "lambda_log_group_name" {
+  description = "CloudWatch log group automatically used by Lambda execution logs."
+  value       = "/aws/lambda/${aws_lambda_function.api.function_name}"
+}
+
+output "api_access_log_group_name" {
+  description = "CloudWatch log group for API Gateway access logs."
+  value       = aws_cloudwatch_log_group.api_access.name
+}
+
+output "alarm_topic_arn" {
+  description = "SNS topic ARN used by CloudWatch alarms. Null when alarm_email is empty."
+  value       = var.alarm_email != "" ? aws_sns_topic.alarms[0].arn : null
+}
