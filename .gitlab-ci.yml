@@ -8,11 +8,17 @@ variables:
   TF_ROOT: infra/terraform/environments/dev
   AWS_DEFAULT_REGION: eu-west-1
 
-python:compile:
+python:test:
   stage: test
   image: python:3.12-slim
+
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements-dev.txt
+
   script:
     - python -m py_compile src/api/handler.py
+    - python -m pytest -v
 
 terraform:fmt:
   stage: validate
