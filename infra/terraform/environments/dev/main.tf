@@ -189,7 +189,8 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      TABLE_NAME = aws_dynamodb_table.incidents.name
+      TABLE_NAME  = aws_dynamodb_table.incidents.name
+      ENVIRONMENT = var.environment
     }
   }
 
@@ -214,6 +215,12 @@ resource "aws_apigatewayv2_integration" "api" {
   integration_type       = "AWS_PROXY"
   integration_uri        = aws_lambda_function.api.invoke_arn
   payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "health" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "GET /health"
+  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
 }
 
 resource "aws_apigatewayv2_route" "list_create_incidents" {

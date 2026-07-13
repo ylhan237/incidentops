@@ -5,65 +5,117 @@ stages:
   - deploy
 
 variables:
-  TF_ROOT: infra/terraform/environments/dev
-  AWS_DEFAULT_REGION: eu-west-1
+  TF_ROOT: "infra/terraform/environments/dev"
+  TF_STATE_NAME: "incidentops-dev"
 
-python:compile:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+  AWS_REGION: "eu-west-1"
+  AWS_DEFAULT_REGION: "eu-west-1"
+
+# Configuration commune pour les jobs qui doivent accéder à AWS.
+.aws_oidc:
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: sts.amazonaws.com
+
+  before_script:
+    - test -n "$AWS_ROLE_ARN" || (echo "AWS_ROLE_ARN is missing" && exit 1)
+    - test -n "$GITLAB_OIDC_TOKEN" || (echo "GITLAB_OIDC_TOKEN is missing" && exit 1)
+    - printf '%s' "$GITLAB_OIDC_TOKEN" > /tmp/gitlab-oidc-token
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/gitlab-oidc-token
+    - export AWS_ROLE_SESSION_NAME="GitLab-${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
+
+python:test:
   stage: test
   image: python:3.12-slim
+
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements-dev.txt
+
   script:
     - python -m py_compile src/api/handler.py
+    - python -m pytest -v
 
 terraform:fmt:
   stage: validate
   image:
     name: hashicorp/terraform:1.9
     entrypoint: [""]
+
   script:
-    - terraform -chdir=$TF_ROOT fmt -check
+    - terraform -chdir="$TF_ROOT" fmt -check
 
 terraform:validate:
   stage: validate
   image:
     name: hashicorp/terraform:1.9
     entrypoint: [""]
+
   script:
-    - terraform -chdir=$TF_ROOT init -backend=false
-    - terraform -chdir=$TF_ROOT validate
+    - terraform -chdir="$TF_ROOT" init -backend=false
+    - terraform -chdir="$TF_ROOT" validate
 
 terraform:plan:
+  extends: .aws_oidc
   stage: plan
+
   image:
     name: hashicorp/terraform:1.9
     entrypoint: [""]
-  rules:
-    - when: manual
-  script:
-    - terraform -chdir=$TF_ROOT init
-    - terraform -chdir=$TF_ROOT plan
 
-frontend:deploy:
-  stage: deploy
-  image:
-    name: amazon/aws-cli:latest
-    entrypoint: [""]
-  id_tokens:
-    GITLAB_OIDC_TOKEN:
-      aud: sts.amazonaws.com
   rules:
     - when: manual
+
   script:
-    - test -n "$INCIDENTOPS_API_URL"
-    - test -n "$SITE_BUCKET_NAME"
-    - test -n "$CLOUDFRONT_DISTRIBUTION_ID"
-    - |
-      if [ -n "$AWS_ROLE_ARN" ]; then
-        aws_sts_output=$(aws sts assume-role-with-web-identity --role-arn "$AWS_ROLE_ARN" --role-session-name "GitLabRunner-${CI_PROJECT_ID}-${CI_PIPELINE_ID}" --web-identity-token "$GITLAB_OIDC_TOKEN" --duration-seconds 3600 --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)
-        export AWS_ACCESS_KEY_ID=$(echo "$aws_sts_output" | awk '{print $1}')
-        export AWS_SECRET_ACCESS_KEY=$(echo "$aws_sts_output" | awk '{print $2}')
-        export AWS_SESSION_TOKEN=$(echo "$aws_sts_output" | awk '{print $3}')
-      fi
-    - aws sts get-caller-identity
-    - sed "s|__INCIDENTOPS_API_URL__|$INCIDENTOPS_API_URL|g" frontend/config.template.js > frontend/config.js
-    - aws s3 sync frontend/ s3://$SITE_BUCKET_NAME --delete --exclude "config.template.js"
-    - aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"
+    - >
+      terraform -chdir="$TF_ROOT" init
+      -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+      -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+      -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+      -backend-config="username=gitlab-ci-token"
+      -backend-config="password=${CI_JOB_TOKEN}"
+      -backend-config="lock_method=POST"
+      -backend-config="unlock_method=DELETE"
+      -backend-config="retry_wait_min=5"
+
+    - terraform -chdir="$TF_ROOT" plan -out=tfplan
+    - terraform -chdir="$TF_ROOT" show -no-color tfplan > "$TF_ROOT/tfplan.txt"
+  artifacts:
+    paths:
+      - "$TF_ROOT/tfplan"
+      - "$TF_ROOT/tfplan.txt"
+    expire_in: 1 day
+
+terraform:apply:
+  extends: .aws_oidc
+  stage: deploy
+
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+    - when: never
+
+  needs:
+    - job: terraform:plan
+      artifacts: true
+
+  script:
+    - >
+      terraform -chdir="$TF_ROOT" init
+      -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+      -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+      -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+      -backend-config="username=gitlab-ci-token"
+      -backend-config="password=${CI_JOB_TOKEN}"
+      -backend-config="lock_method=POST"
+      -backend-config="unlock_method=DELETE"
+      -backend-config="retry_wait_min=5"
+
+    - terraform -chdir="$TF_ROOT" apply -auto-approve tfplan

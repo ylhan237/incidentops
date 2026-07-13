@@ -2,46 +2,335 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>IncidentOps</title>
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+
+    <meta
+      name="description"
+      content="IncidentOps, plateforme serverless de gestion des incidents."
+    />
+
+    <title>IncidentOps — Dashboard</title>
+
     <link rel="stylesheet" href="./styles.css" />
   </head>
+
   <body>
-    <main class="shell">
-      <section class="panel">
-        <div>
-          <p class="eyebrow">AWS Serverless Portfolio</p>
-          <h1>IncidentOps</h1>
-          <p class="lead">Suivi minimal d'incidents pour demontrer une architecture cloud securisee, scalable et peu couteuse.</p>
+    <div class="app-shell">
+
+      <!-- Barre latérale -->
+      <aside class="sidebar">
+
+        <div class="brand">
+          <div class="brand-logo">IO</div>
+
+          <div>
+            <p class="brand-name">IncidentOps</p>
+            <p class="brand-description">AWS Serverless</p>
+          </div>
         </div>
 
-        <form id="incident-form" class="form">
-          <label>
-            Titre
-            <input id="title" name="title" placeholder="API latency elevated" required />
-          </label>
+        <nav class="navigation" aria-label="Navigation principale">
 
-          <label>
-            Severite
-            <select id="severity" name="severity">
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
+          <a href="#dashboard" class="navigation-link active">
+            <span aria-hidden="true">▦</span>
+            Dashboard
+          </a>
 
-          <button type="submit">Creer l'incident</button>
-        </form>
-      </section>
+          <a href="#incidents-section" class="navigation-link">
+            <span aria-hidden="true">⚠</span>
+            Incidents
+          </a>
 
-      <section class="list">
-        <div class="list-header">
-          <h2>Incidents</h2>
-          <button id="refresh" type="button">Rafraichir</button>
+          <a href="#create-section" class="navigation-link">
+            <span aria-hidden="true">＋</span>
+            Nouvel incident
+          </a>
+
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="environment-card">
+            <span class="status-dot"></span>
+
+            <div>
+              <p class="environment-label">Environnement</p>
+              <p class="environment-value">Development</p>
+            </div>
+          </div>
         </div>
-        <div id="incidents" class="items"></div>
-      </section>
-    </main>
+
+      </aside>
+
+      <!-- Contenu principal -->
+      <main class="main-content" id="dashboard">
+
+        <!-- En-tête -->
+        <header class="topbar">
+
+          <div>
+            <p class="eyebrow">Operations dashboard</p>
+
+            <h1>Vue d’ensemble</h1>
+
+            <p class="page-description">
+              Surveillez, créez et suivez les incidents depuis une
+              interface centralisée.
+            </p>
+          </div>
+
+          <div
+            id="api-status"
+            class="api-status"
+            aria-live="polite"
+          >
+            <span class="status-dot"></span>
+
+            <div>
+              <p class="api-status-label">API status</p>
+              <p class="api-status-value">Vérification...</p>
+            </div>
+          </div>
+
+        </header>
+
+        <!-- Statistiques -->
+        <section
+          class="stats-grid"
+          aria-label="Statistiques des incidents"
+        >
+
+          <article class="stat-card">
+            <div class="stat-header">
+              <span class="stat-label">Total incidents</span>
+              <span class="stat-icon">◆</span>
+            </div>
+
+            <strong id="stat-total" class="stat-value">0</strong>
+
+            <span class="stat-help">
+              Tous les incidents enregistrés
+            </span>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-header">
+              <span class="stat-label">Incidents ouverts</span>
+              <span class="stat-icon warning">●</span>
+            </div>
+
+            <strong id="stat-open" class="stat-value">0</strong>
+
+            <span class="stat-help">
+              Nécessitent une intervention
+            </span>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-header">
+              <span class="stat-label">Sévérité haute</span>
+              <span class="stat-icon danger">▲</span>
+            </div>
+
+            <strong id="stat-high" class="stat-value">0</strong>
+
+            <span class="stat-help">
+              Priorité opérationnelle élevée
+            </span>
+          </article>
+
+          <article class="stat-card">
+            <div class="stat-header">
+              <span class="stat-label">Incidents résolus</span>
+              <span class="stat-icon success">✓</span>
+            </div>
+
+            <strong id="stat-resolved" class="stat-value">0</strong>
+
+            <span class="stat-help">
+              Cycle de traitement terminé
+            </span>
+          </article>
+
+        </section>
+
+        <section class="content-grid">
+
+          <!-- Liste des incidents -->
+          <article
+            class="panel incidents-panel"
+            id="incidents-section"
+          >
+
+            <div class="panel-header">
+
+              <div>
+                <p class="panel-kicker">Incident management</p>
+                <h2>Incidents</h2>
+              </div>
+
+              <button
+                id="refresh"
+                class="button button-secondary"
+                type="button"
+              >
+                <span aria-hidden="true">↻</span>
+                Rafraîchir
+              </button>
+
+            </div>
+
+            <!-- Recherche et filtre -->
+            <div class="toolbar">
+
+              <label class="search-field">
+
+                <span class="sr-only">
+                  Rechercher un incident
+                </span>
+
+                <span class="search-icon" aria-hidden="true">
+                  ⌕
+                </span>
+
+                <input
+                  id="search-input"
+                  type="search"
+                  placeholder="Rechercher par titre, statut ou ID"
+                  autocomplete="off"
+                />
+
+              </label>
+
+              <label class="filter-field">
+
+                <span class="sr-only">
+                  Filtrer par sévérité
+                </span>
+
+                <select id="severity-filter">
+                  <option value="all">
+                    Toutes les sévérités
+                  </option>
+
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+
+              </label>
+
+            </div>
+
+            <!-- Messages de succès ou d’erreur -->
+            <div
+              id="feedback"
+              class="feedback"
+              role="status"
+              aria-live="polite"
+            ></div>
+
+            <!-- Liste générée par JavaScript -->
+            <div
+              id="incidents"
+              class="incident-list"
+            ></div>
+
+          </article>
+
+          <!-- Formulaire -->
+          <aside
+            class="panel create-panel"
+            id="create-section"
+          >
+
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Quick action</p>
+                <h2>Créer un incident</h2>
+              </div>
+            </div>
+
+            <p class="form-description">
+              Déclarez rapidement un incident. Il sera enregistré avec
+              le statut <strong>open</strong>.
+            </p>
+
+            <form
+              id="incident-form"
+              class="incident-form"
+            >
+
+              <label class="form-field">
+
+                <span>Titre de l’incident</span>
+
+                <input
+                  id="title"
+                  name="title"
+                  placeholder="Ex. API latency elevated"
+                  maxlength="120"
+                  required
+                />
+
+                <small>
+                  Décrivez clairement le problème observé.
+                </small>
+
+              </label>
+
+              <label class="form-field">
+
+                <span>Sévérité</span>
+
+                <select id="severity" name="severity">
+
+                  <option value="low">
+                    Low — Impact limité
+                  </option>
+
+                  <option value="medium" selected>
+                    Medium — Impact modéré
+                  </option>
+
+                  <option value="high">
+                    High — Impact important
+                  </option>
+
+                </select>
+
+              </label>
+
+              <button
+                class="button button-primary"
+                type="submit"
+              >
+                <span aria-hidden="true">＋</span>
+                Créer l’incident
+              </button>
+
+            </form>
+
+            <div class="architecture-note">
+              <p class="architecture-title">
+                Architecture actuelle
+              </p>
+
+              <p>
+                CloudFront · S3 · API Gateway · Lambda · DynamoDB
+              </p>
+            </div>
+
+          </aside>
+
+        </section>
+
+      </main>
+
+    </div>
 
     <script src="./config.js"></script>
     <script src="./app.js"></script>

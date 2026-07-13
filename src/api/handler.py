@@ -10,8 +10,15 @@ except ImportError:
     boto3 = None
 
 
-TABLE_NAME = os.environ.get("TABLE_NAME", "incidentops-dev-incidents")
+TABLE_NAME = os.environ.get(
+    "TABLE_NAME",
+    "incidentops-dev-incidents",
+)
 
+ENVIRONMENT = os.environ.get(
+    "ENVIRONMENT",
+    "local",
+)
 
 def _response(status_code, body):
     return {
@@ -37,6 +44,15 @@ def _table():
         raise RuntimeError("boto3 is required when running inside AWS Lambda")
     return boto3.resource("dynamodb").Table(TABLE_NAME)
 
+def health():
+    return _response(
+        200,
+        {
+            "status": "healthy",
+            "service": "incidentops-api",
+            "environment": ENVIRONMENT,
+        },
+    )
 
 def list_incidents():
     result = _table().scan(Limit=50)
@@ -87,6 +103,8 @@ def handler(event, context):
 
     if method == "OPTIONS":
         return _response(204, {})
+    if method == "GET" and raw_path == "/health":
+        return health()
 
     if method == "GET" and raw_path == "/incidents":
         return list_incidents()
