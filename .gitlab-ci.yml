@@ -14,6 +14,16 @@ variables:
   AWS_REGION: "eu-west-1"
   AWS_DEFAULT_REGION: "eu-west-1"
 
+  # Backend HTTP GitLab
+  TF_HTTP_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+  TF_HTTP_LOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+  TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+  TF_HTTP_USERNAME: "gitlab-ci-token"
+  TF_HTTP_PASSWORD: "${CI_JOB_TOKEN}"
+  TF_HTTP_LOCK_METHOD: "POST"
+  TF_HTTP_UNLOCK_METHOD: "DELETE"
+  TF_HTTP_RETRY_WAIT_MIN: "5"
+
 # Configuration commune pour les jobs qui doivent accéder à AWS.
 .aws_oidc:
   id_tokens:
@@ -70,19 +80,10 @@ terraform:plan:
     - when: manual
 
   script:
-    - >
-      terraform -chdir="$TF_ROOT" init
-      -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
-      -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
-      -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
-      -backend-config="username=gitlab-ci-token"
-      -backend-config="password=${CI_JOB_TOKEN}"
-      -backend-config="lock_method=POST"
-      -backend-config="unlock_method=DELETE"
-      -backend-config="retry_wait_min=5"
-
+    - terraform -chdir="$TF_ROOT" init -reconfigure
     - terraform -chdir="$TF_ROOT" plan -out=tfplan
     - terraform -chdir="$TF_ROOT" show -no-color tfplan > "$TF_ROOT/tfplan.txt"
+
   artifacts:
     paths:
       - "$TF_ROOT/tfplan"
@@ -97,25 +98,15 @@ terraform:apply:
     name: hashicorp/terraform:1.9
     entrypoint: [""]
 
+  needs:
+    - job: terraform:plan
+      artifacts: true
+
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: manual
     - when: never
 
-  needs:
-    - job: terraform:plan
-      artifacts: true
-
   script:
-    - >
-      terraform -chdir="$TF_ROOT" init
-      -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
-      -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
-      -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
-      -backend-config="username=gitlab-ci-token"
-      -backend-config="password=${CI_JOB_TOKEN}"
-      -backend-config="lock_method=POST"
-      -backend-config="unlock_method=DELETE"
-      -backend-config="retry_wait_min=5"
-
+    - terraform -chdir="$TF_ROOT" init -reconfigure
     - terraform -chdir="$TF_ROOT" apply -auto-approve tfplan
