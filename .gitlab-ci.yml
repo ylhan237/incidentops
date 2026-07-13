@@ -77,17 +77,24 @@ terraform:plan:
     entrypoint: [""]
 
   rules:
-    - when: manual
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+    - when: never
 
   script:
     - terraform -chdir="$TF_ROOT" init -reconfigure
     - terraform -chdir="$TF_ROOT" plan -out=tfplan
     - terraform -chdir="$TF_ROOT" show -no-color tfplan > "$TF_ROOT/tfplan.txt"
+    - test -f "$TF_ROOT/api.zip"
+    - ls -la "$TF_ROOT"
 
   artifacts:
     paths:
       - "$TF_ROOT/tfplan"
       - "$TF_ROOT/tfplan.txt"
+      - "$TF_ROOT/api.zip"
     expire_in: 1 day
 
 terraform:apply:
@@ -109,4 +116,7 @@ terraform:apply:
 
   script:
     - terraform -chdir="$TF_ROOT" init -reconfigure
+    - test -f "$TF_ROOT/tfplan"
+    - test -f "$TF_ROOT/api.zip"
+    - ls -la "$TF_ROOT"
     - terraform -chdir="$TF_ROOT" apply -auto-approve tfplan
