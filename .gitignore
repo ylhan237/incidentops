@@ -9,3 +9,9 @@ frontend/config.js
 __pycache__/
 .pytest_cache/
 .DS_Store
+.venv/
+# Terraform local files
+**/tfplan
+*.tfplan
+state-before-import.json
+state-before-remote-migration.json
