@@ -84,34 +84,33 @@ terraform:plan:
     - terraform -chdir="$TF_ROOT" plan -out=tfplan
     - terraform -chdir="$TF_ROOT" show -no-color tfplan > "$TF_ROOT/tfplan.txt"
 
-frontend:deploy:
+terraform:apply:
   extends: .aws_oidc
   stage: deploy
 
   image:
-    name: amazon/aws-cli:latest
+    name: hashicorp/terraform:1.9
     entrypoint: [""]
 
   rules:
-    - when: manual
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+    - when: never
+
+  needs:
+    - job: terraform:plan
+      artifacts: true
 
   script:
-    - test -n "$INCIDENTOPS_API_URL" || (echo "INCIDENTOPS_API_URL is missing" && exit 1)
-    - test -n "$SITE_BUCKET_NAME" || (echo "SITE_BUCKET_NAME is missing" && exit 1)
-    - test -n "$CLOUDFRONT_DISTRIBUTION_ID" || (echo "CLOUDFRONT_DISTRIBUTION_ID is missing" && exit 1)
-
-    - aws sts get-caller-identity
-
-    - sed "s|__INCIDENTOPS_API_URL__|$INCIDENTOPS_API_URL|g" frontend/config.template.js > frontend/config.js
-
     - >
-      aws s3 sync
-      frontend/
-      "s3://$SITE_BUCKET_NAME"
-      --delete
-      --exclude "config.template.js"
+      terraform -chdir="$TF_ROOT" init
+      -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+      -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+      -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+      -backend-config="username=gitlab-ci-token"
+      -backend-config="password=${CI_JOB_TOKEN}"
+      -backend-config="lock_method=POST"
+      -backend-config="unlock_method=DELETE"
+      -backend-config="retry_wait_min=5"
 
-    - >
-      aws cloudfront create-invalidation
-      --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID"
-      --paths "/*"
+    - terraform -chdir="$TF_ROOT" apply -auto-approve tfplan
