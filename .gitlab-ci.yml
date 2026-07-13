@@ -66,6 +66,9 @@ terraform:plan:
     name: hashicorp/terraform:1.9
     entrypoint: [""]
 
+  variables:
+      AWS_ROLE_ARN: "$AWS_PLAN_ROLE_ARN"
+
   rules:
     - when: manual
 
