@@ -83,6 +83,11 @@ terraform:plan:
 
     - terraform -chdir="$TF_ROOT" plan -out=tfplan
     - terraform -chdir="$TF_ROOT" show -no-color tfplan > "$TF_ROOT/tfplan.txt"
+  artifacts:
+    paths:
+      - "$TF_ROOT/tfplan"
+      - "$TF_ROOT/tfplan.txt"
+    expire_in: 1 day
 
 terraform:apply:
   extends: .aws_oidc
