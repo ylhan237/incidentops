@@ -159,7 +159,8 @@ data "aws_iam_policy_document" "api_dynamodb" {
     actions = [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
-      "dynamodb:Scan"
+      "dynamodb:Scan",
+      "dynamodb:UpdateItem",
     ]
 
     resources = [aws_dynamodb_table.incidents.arn]
