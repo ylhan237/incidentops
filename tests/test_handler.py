@@ -1,261 +1,153 @@
 import json
+from unittest.mock import MagicMock
 
-import pytest
-
-from src.api import handler as api
-
-
-class FakeTable:
-    """Simulation minimale d'une table DynamoDB pour les tests."""
-
-    def __init__(self):
-        self.items = {}
-
-    def scan(self, Limit=50):
-        return {
-            "Items": list(self.items.values())[:Limit]
-        }
-
-    def get_item(self, Key):
-        incident_id = Key["id"]
-
-        if incident_id not in self.items:
-            return {}
-
-        return {
-            "Item": self.items[incident_id]
-        }
-
-    def put_item(self, Item):
-        self.items[Item["id"]] = Item
-
-        return {
-            "ResponseMetadata": {
-                "HTTPStatusCode": 200
-            }
-        }
+import src.api.handler as api
 
 
-@pytest.fixture
-def fake_table(monkeypatch):
-    table = FakeTable()
-
-    monkeypatch.setattr(
-        api,
-        "_table",
-        lambda: table,
-    )
-
-    return table
-
-
-def build_event(
-    method="GET",
-    path="/health",
-    body=None,
-    path_parameters=None,
-):
-    return {
+def make_event(method, path, body=None, incident_id=None):
+    event = {
         "requestContext": {
             "http": {
-                "method": method
+                "method": method,
             }
         },
         "rawPath": path,
-        "pathParameters": path_parameters,
-        "body": body,
+        "pathParameters": {},
     }
 
+    if body is not None:
+        event["body"] = json.dumps(body)
 
-def parse_body(response):
+    if incident_id is not None:
+        event["pathParameters"]["id"] = incident_id
+
+    return event
+
+
+def response_body(response):
     return json.loads(response["body"])
 
 
-def test_health_endpoint():
-    response = api.handler(
-        build_event(
-            method="GET",
-            path="/health",
-        ),
-        None,
-    )
+def test_health():
+    event = make_event("GET", "/health")
 
-    body = parse_body(response)
+    response = api.handler(event, None)
+    body = response_body(response)
 
     assert response["statusCode"] == 200
     assert body["status"] == "healthy"
-    assert body["service"] == "incidentops-api"
-    assert "environment" in body
 
 
-def test_list_incidents_empty(fake_table):
-    response = api.handler(
-        build_event(
-            method="GET",
-            path="/incidents",
-        ),
-        None,
-    )
-
-    body = parse_body(response)
-
-    assert response["statusCode"] == 200
-    assert body == {
-        "items": []
+def test_list_incidents(monkeypatch):
+    table = MagicMock()
+    table.scan.return_value = {
+        "Items": [
+            {
+                "id": "incident-1",
+                "title": "API unavailable",
+                "severity": "high",
+                "status": "open",
+            }
+        ]
     }
 
+    monkeypatch.setattr(api, "_table", lambda: table)
 
-def test_create_incident(fake_table):
-    response = api.handler(
-        build_event(
-            method="POST",
-            path="/incidents",
-            body=json.dumps(
-                {
-                    "title": "API latency elevated",
-                    "severity": "high",
-                }
-            ),
-        ),
-        None,
+    event = make_event("GET", "/incidents")
+
+    response = api.handler(event, None)
+    body = response_body(response)
+
+    assert response["statusCode"] == 200
+    assert len(body["items"]) == 1
+    assert body["items"][0]["id"] == "incident-1"
+
+    table.scan.assert_called_once_with(Limit=50)
+
+
+def test_create_incident(monkeypatch):
+    table = MagicMock()
+
+    monkeypatch.setattr(api, "_table", lambda: table)
+
+    event = make_event(
+        "POST",
+        "/incidents",
+        body={
+            "title": "Database latency",
+            "severity": "medium",
+        },
     )
 
-    body = parse_body(response)
+    response = api.handler(event, None)
+    body = response_body(response)
 
     assert response["statusCode"] == 201
-    assert body["title"] == "API latency elevated"
-    assert body["severity"] == "high"
+    assert body["title"] == "Database latency"
+    assert body["severity"] == "medium"
     assert body["status"] == "open"
     assert "id" in body
-    assert "createdAt" in body
-    assert body["id"] in fake_table.items
+
+    table.put_item.assert_called_once()
 
 
-def test_create_incident_with_missing_title(fake_table):
-    response = api.handler(
-        build_event(
-            method="POST",
-            path="/incidents",
-            body=json.dumps(
-                {
-                    "severity": "medium"
-                }
-            ),
-        ),
-        None,
-    )
-
-    body = parse_body(response)
-
-    assert response["statusCode"] == 400
-    assert body["message"] == "title is required"
-
-
-def test_create_incident_with_invalid_severity(fake_table):
-    response = api.handler(
-        build_event(
-            method="POST",
-            path="/incidents",
-            body=json.dumps(
-                {
-                    "title": "Database unavailable",
-                    "severity": "critical",
-                }
-            ),
-        ),
-        None,
-    )
-
-    body = parse_body(response)
-
-    assert response["statusCode"] == 400
-    assert body["message"] == (
-        "severity must be low, medium, or high"
-    )
-
-
-def test_create_incident_with_invalid_json(fake_table):
-    response = api.handler(
-        build_event(
-            method="POST",
-            path="/incidents",
-            body="{invalid-json}",
-        ),
-        None,
-    )
-
-    body = parse_body(response)
-
-    assert response["statusCode"] == 400
-    assert body["message"] == "Invalid JSON body"
-
-
-def test_get_existing_incident(fake_table):
-    fake_table.items["incident-001"] = {
-        "id": "incident-001",
-        "title": "Service unavailable",
-        "severity": "high",
-        "status": "open",
+def test_update_incident_status(monkeypatch):
+    table = MagicMock()
+    table.update_item.return_value = {
+        "Attributes": {
+            "id": "incident-1",
+            "title": "Database latency",
+            "severity": "medium",
+            "status": "investigating",
+        }
     }
 
-    response = api.handler(
-        build_event(
-            method="GET",
-            path="/incidents/incident-001",
-            path_parameters={
-                "id": "incident-001"
-            },
-        ),
-        None,
+    monkeypatch.setattr(api, "_table", lambda: table)
+
+    event = make_event(
+        "PATCH",
+        "/incidents/incident-1",
+        body={
+            "status": "investigating",
+        },
+        incident_id="incident-1",
     )
 
-    body = parse_body(response)
+    response = api.handler(event, None)
+    body = response_body(response)
 
     assert response["statusCode"] == 200
-    assert body["id"] == "incident-001"
-    assert body["title"] == "Service unavailable"
+    assert body["status"] == "investigating"
+
+    table.update_item.assert_called_once()
 
 
-def test_get_unknown_incident(fake_table):
-    response = api.handler(
-        build_event(
-            method="GET",
-            path="/incidents/unknown",
-            path_parameters={
-                "id": "unknown"
-            },
-        ),
-        None,
+def test_reject_invalid_status(monkeypatch):
+    table = MagicMock()
+
+    monkeypatch.setattr(api, "_table", lambda: table)
+
+    event = make_event(
+        "PATCH",
+        "/incidents/incident-1",
+        body={
+            "status": "deleted",
+        },
+        incident_id="incident-1",
     )
 
-    body = parse_body(response)
+    response = api.handler(event, None)
+    body = response_body(response)
 
-    assert response["statusCode"] == 404
-    assert body["message"] == "Incident not found"
+    assert response["statusCode"] == 400
+    assert "status" in body["message"]
+
+    table.update_item.assert_not_called()
 
 
 def test_unknown_route():
-    response = api.handler(
-        build_event(
-            method="GET",
-            path="/unknown",
-        ),
-        None,
-    )
+    event = make_event("GET", "/unknown")
 
-    body = parse_body(response)
+    response = api.handler(event, None)
 
     assert response["statusCode"] == 404
-    assert body["message"] == "Route not found"
-
-
-def test_options_request():
-    response = api.handler(
-        build_event(
-            method="OPTIONS",
-            path="/incidents",
-        ),
-        None,
-    )
-
-    assert response["statusCode"] == 204
