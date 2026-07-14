@@ -306,28 +306,6 @@ resource "aws_sns_topic_subscription" "alarm_email" {
   endpoint  = var.alarm_email
 }
 
-resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
-  alarm_name          = "${local.name_prefix}-lambda-errors"
-  alarm_description   = "Triggers when the incidents Lambda returns errors."
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 1
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    FunctionName = aws_lambda_function.api.function_name
-  }
-
-  alarm_actions = var.alarm_email != "" ? [aws_sns_topic.alarms[0].arn] : []
-  ok_actions    = var.alarm_email != "" ? [aws_sns_topic.alarms[0].arn] : []
-
-  tags = local.common_tags
-}
-
 resource "aws_cloudwatch_metric_alarm" "api_5xx" {
   alarm_name          = "${local.name_prefix}-api-5xx"
   alarm_description   = "Triggers when API Gateway returns server-side errors."
@@ -430,4 +408,53 @@ resource "aws_iam_role_policy_attachment" "gitlab_deploy" {
 
   role       = aws_iam_role.gitlab_deploy[0].name
   policy_arn = aws_iam_policy.gitlab_deploy[0].arn
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  alarm_name        = "${local.name_prefix}-lambda-errors"
+  alarm_description = "Detecte les erreurs de la Lambda IncidentOps"
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Errors"
+
+  dimensions = {
+    FunctionName = aws_lambda_function.api.function_name
+  }
+
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+
+  treat_missing_data = "notBreaching"
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_5xx_errors" {
+  alarm_name        = "${local.name_prefix}-api-5xx-errors"
+  alarm_description = "Detecte les erreurs HTTP 5xx de l API IncidentOps"
+
+  namespace   = "AWS/ApiGateway"
+  metric_name = "5xx"
+
+  dimensions = {
+    ApiId = aws_apigatewayv2_api.api.id
+    Stage = aws_apigatewayv2_stage.default.name
+  }
+
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+
+  treat_missing_data = "notBreaching"
+
+  tags = local.common_tags
 }
