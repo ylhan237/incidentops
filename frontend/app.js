@@ -7,6 +7,7 @@ const feedback = document.querySelector("#feedback");
 const searchInput = document.querySelector("#search-input");
 const severityFilter = document.querySelector("#severity-filter");
 const apiStatus = document.querySelector("#api-status");
+const statusFilter = document.querySelector("#status-filter");
 
 const stats = {
   total: document.querySelector("#stat-total"),
@@ -101,6 +102,7 @@ function updateStats(items) {
 function getFilteredIncidents() {
   const query = normalize(searchInput.value);
   const selectedSeverity = normalize(severityFilter.value);
+  const selectedStatus = normalize(statusFilter.value);
 
   return incidentState.filter((item) => {
     const matchesQuery =
@@ -113,7 +115,15 @@ function getFilteredIncidents() {
       selectedSeverity === "all" ||
       normalize(item.severity) === selectedSeverity;
 
-    return matchesQuery && matchesSeverity;
+    const matchesStatus =
+      selectedStatus === "all" ||
+      normalize(item.status) === selectedStatus;
+
+    return (
+      matchesQuery &&
+      matchesSeverity &&
+      matchesStatus
+    );
   });
 }
 
@@ -505,6 +515,11 @@ searchInput.addEventListener(
 );
 
 severityFilter.addEventListener(
+  "change",
+  refreshFilteredView
+);
+
+statusFilter.addEventListener(
   "change",
   refreshFilteredView
 );
