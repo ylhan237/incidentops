@@ -2,7 +2,11 @@ import json
 import os
 import time
 import uuid
+import logging
 from decimal import Decimal
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 try:
     import boto3
@@ -97,26 +101,53 @@ def create_incident(event):
 
 
 def handler(event, context):
-    method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
-    raw_path = event.get("rawPath", "/incidents")
-    path_parameters = event.get("pathParameters") or {}
+    try:
+        method = (
+            event.get("requestContext", {})
+            .get("http", {})
+            .get("method", "GET")
+        )
+        raw_path = event.get("rawPath", "/incidents")
+        path_parameters = event.get("pathParameters") or {}
 
-    if method == "OPTIONS":
-        return _response(204, {})
-    if method == "GET" and raw_path == "/health":
-        return health()
+        logger.info(
+            "Processing request method=%s path=%s request_id=%s",
+            method,
+            raw_path,
+            getattr(context, "aws_request_id", "local"),
+        )
 
-    if method == "GET" and raw_path == "/incidents":
-        return list_incidents()
+        if method == "OPTIONS":
+            return _response(204, {})
 
-    incident_id = path_parameters.get("id")
-    if method == "GET" and incident_id:
-        return get_incident(incident_id)
+        if method == "GET" and raw_path == "/health":
+            return health()
 
-    if method == "POST" and raw_path == "/incidents":
-        return create_incident(event)
+        if method == "GET" and raw_path == "/incidents":
+            return list_incidents()
 
-    return _response(404, {"message": "Route not found"})
+        incident_id = path_parameters.get("id")
+
+        if method == "GET" and incident_id:
+            return get_incident(incident_id)
+
+        if method == "POST" and raw_path == "/incidents":
+            return create_incident(event)
+
+        return _response(404, {"message": "Route not found"})
+
+    except Exception:
+        logger.exception(
+            "Unhandled error while processing request"
+        )
+
+        return _response(
+            500,
+            {
+                "message": "Internal server error",
+                "environment": ENVIRONMENT,
+            },
+        )
 
 
 if __name__ == "__main__":
