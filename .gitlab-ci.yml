@@ -13,7 +13,13 @@ variables:
 
   AWS_REGION: "eu-west-1"
   AWS_DEFAULT_REGION: "eu-west-1"
-
+  TF_HTTP_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+  TF_HTTP_LOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+  TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
+  TF_HTTP_USERNAME: "gitlab-ci-token"
+  TF_HTTP_LOCK_METHOD: "POST"
+  TF_HTTP_UNLOCK_METHOD: "DELETE"
+  TF_HTTP_RETRY_WAIT_MIN: "5"
 # Configuration commune pour les jobs qui doivent accéder à AWS.
 .aws_oidc:
   id_tokens:
@@ -83,6 +89,7 @@ terraform:plan:
     - printf '%s' "$GITLAB_OIDC_TOKEN" > /tmp/gitlab-oidc-token
     - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/gitlab-oidc-token
     - export AWS_ROLE_SESSION_NAME="GitLab-Plan-${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
+    - export TF_HTTP_PASSWORD="$CI_JOB_TOKEN"
 
   script:
     - >
@@ -132,16 +139,6 @@ terraform:apply:
   interruptible: false
 
   script:
-    - >
-      terraform -chdir="$TF_ROOT" init
-      -backend-config="address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
-      -backend-config="lock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
-      -backend-config="unlock_address=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}/lock"
-      -backend-config="username=gitlab-ci-token"
-      -backend-config="password=${CI_JOB_TOKEN}"
-      -backend-config="lock_method=POST"
-      -backend-config="unlock_method=DELETE"
-      -backend-config="retry_wait_min=5"
-
+    - terraform -chdir="$TF_ROOT" init -reconfigure
     - test -f "$TF_ROOT/tfplan" || (echo "Terraform plan artifact is missing" && exit 1)
     - terraform -chdir="$TF_ROOT" apply tfplan
