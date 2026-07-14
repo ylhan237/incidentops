@@ -1,130 +1,272 @@
-# IncidentOps Serverless Hub
+# IncidentOps
 
-IncidentOps Serverless Hub est un projet portfolio AWS construit pour pratiquer les concepts de l'examen **AWS Certified Solutions Architect Associate** et demontrer une architecture cloud moderne, serverless, securisee et observable.
+[![AWS](https://img.shields.io/badge/AWS-Serverless-FF9900?logo=amazonaws&logoColor=white)](#architecture)
+[![Terraform](https://img.shields.io/badge/Infrastructure-Terraform-7B42BC?logo=terraform&logoColor=white)](#infrastructure-as-code)
+[![GitLab CI/CD](https://img.shields.io/badge/CI%2FCD-GitLab-FC6D26?logo=gitlab&logoColor=white)](#cicd)
+[![Python](https://img.shields.io/badge/Runtime-Python%203.12-3776AB?logo=python&logoColor=white)](#stack-technique)
+[![Tests](https://img.shields.io/badge/Tests-Pytest-0A9EDC?logo=pytest&logoColor=white)](#tests)
+[![Region](https://img.shields.io/badge/AWS%20Region-eu--west--1-232F3E?logo=amazonaws&logoColor=white)](#)
 
-L'application permet de creer et lister des incidents operationnels depuis une interface web statique. Le frontend est servi par CloudFront, l'API est exposee par API Gateway, la logique tourne sur Lambda, et les donnees sont stockees dans DynamoDB.
+IncidentOps est une application serverless de gestion d’incidents déployée sur AWS.
 
-> Region du projet : `eu-west-1` (Ireland)
+Le projet met en œuvre une architecture cloud sécurisée, observable et entièrement provisionnée avec Terraform, avec une chaîne CI/CD GitLab authentifiée auprès d’AWS par OIDC.
 
-## Apercu
+L’application permet de créer, rechercher, filtrer et suivre des incidents tout au long de leur cycle de vie :
 
-| Domaine | Implementation |
-| --- | --- |
-| Frontend | HTML/CSS/JavaScript statique |
-| CDN | Amazon CloudFront |
-| Stockage frontend | Amazon S3 prive |
-| API | API Gateway HTTP API |
-| Compute | AWS Lambda Python 3.12 |
-| Database | DynamoDB on-demand |
-| Infrastructure as Code | Terraform |
-| CI/CD | GitLab CI/CD |
-| Auth CI/CD AWS | GitLab OIDC + AWS STS |
-| Observabilite | CloudWatch Logs, CloudWatch Alarms, SNS email |
-| Region | `eu-west-1` |
+```text
+open → investigating → resolved → open
+```
+
+## Démonstration
+
+- **Dashboard** : https://dtqbjr4y22jgc.cloudfront.net
+- **API** : `https://1ji5i8km87.execute-api.eu-west-1.amazonaws.com`
+- **Région AWS** : `eu-west-1`
+
+> Les URL correspondent à l’environnement de démonstration actuel et peuvent changer si l’infrastructure est recréée.
+
+## Aperçu
+
+<!-- Ajouter les captures dans docs/screenshots/ -->
+
+![Dashboard IncidentOps](docs/screenshots/dashboard.png)
+
+![Pipeline GitLab CI/CD](docs/screenshots/gitlab-pipeline.png)
+
+## Fonctionnalités
+
+- Création d’un incident avec titre et niveau de sévérité.
+- Consultation de la liste des incidents.
+- Consultation d’un incident par identifiant.
+- Recherche par titre, statut ou identifiant.
+- Filtrage par sévérité et par statut.
+- Mise à jour du cycle de vie d’un incident.
+- Mise à jour de l’interface sans rechargement complet.
+- Mode démonstration local lorsque l’URL de l’API n’est pas configurée.
+- Journalisation Lambda et API Gateway dans CloudWatch.
+- Alarmes CloudWatch sur les erreurs Lambda et les réponses API 5xx.
+- Déploiement automatisé du frontend et de l’infrastructure avec GitLab CI/CD.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    User["Utilisateur"] --> CF["CloudFront"]
-    CF --> S3["S3 bucket prive"]
-    User --> APIGW["API Gateway HTTP API"]
-    APIGW --> Lambda["Lambda incidents-api"]
-    Lambda --> DDB["DynamoDB incidents"]
-    Lambda --> CW["CloudWatch Logs"]
-    APIGW --> APILogs["API access logs"]
-    CW --> Alarm["CloudWatch Alarms"]
-    Alarm --> SNS["SNS email alerts"]
-    GitLab["GitLab CI/CD"] --> STS["AWS STS OIDC"]
-    STS --> S3
-    GitLab --> CF
+    U[Utilisateur] --> CF[Amazon CloudFront]
+    CF --> S3[Amazon S3 privé]
+
+    U --> APIGW[API Gateway HTTP API]
+    APIGW --> L[AWS Lambda Python 3.12]
+    L --> DDB[Amazon DynamoDB]
+
+    L --> CWL[CloudWatch Logs]
+    APIGW --> CWA[API Gateway Access Logs]
+
+    CWL --> AL1[Alarme erreurs Lambda]
+    CWA --> AL2[Alarme erreurs API 5xx]
+
+    GL[GitLab CI/CD] --> OIDC[GitLab OIDC]
+    OIDC --> STS[AWS STS]
+    STS --> IAM[AWS IAM Roles]
+
+    GL --> TF[Terraform]
+    TF --> IAM
 ```
 
-## Fonctionnalites
-
-- Creation d'incidents avec titre et severite.
-- Lecture des incidents via API.
-- Frontend deploye sur S3 et distribue par CloudFront.
-- Bucket S3 prive avec acces via CloudFront Origin Access Control.
-- API serverless avec API Gateway et Lambda.
-- Table DynamoDB en mode `PAY_PER_REQUEST`.
-- IAM least privilege pour Lambda et GitLab.
-- Pipeline GitLab avec validation Python, validation Terraform, plan manuel et deploy frontend manuel.
-- GitLab OIDC pour eviter les access keys longues durees.
-- Logs CloudWatch pour Lambda et API Gateway.
-- Alarmes CloudWatch avec notifications email via SNS.
-
-## Captures d'ecran a ajouter
-
-Cree un dossier `docs/screenshots/`, puis ajoute ces images :
-
-| Fichier conseille | Capture a prendre | Pourquoi elle compte |
-| --- | --- | --- |
-| `docs/screenshots/frontend.png` | Page CloudFront avec la liste des incidents | Montre l'application finale accessible publiquement |
-| `docs/screenshots/gitlab-pipeline.png` | Pipeline GitLab passe avec les jobs verts | Montre la partie CI/CD |
-| `docs/screenshots/aws-architecture-resources.png` | Console AWS avec Lambda, API Gateway ou CloudFront | Montre que les ressources existent dans AWS |
-| `docs/screenshots/cloudwatch-logs.png` | CloudWatch Log group avec logs Lambda/API | Montre l'observabilite |
-| `docs/screenshots/cloudwatch-alarms.png` | Alarmes CloudWatch `incidentops-dev-*` | Montre le monitoring |
-| `docs/screenshots/sns-email-alert.png` | Email SNS recu ou subscription confirmee | Montre les alertes email |
-| `docs/screenshots/terraform-output.png` | Terminal avec `terraform output` | Montre les endpoints et outputs Terraform |
-
-Quand les captures sont ajoutees, tu peux decommenter ces lignes :
-
-```md
-![Frontend](docs/screenshots/frontend.png)
-![GitLab pipeline](docs/screenshots/gitlab-pipeline.png)
-![CloudWatch alarms](docs/screenshots/cloudwatch-alarms.png)
-```
-
-## Structure du projet
+### Flux applicatif
 
 ```text
-.
-+-- .gitlab-ci.yml
-+-- frontend/
-|   +-- app.js
-|   +-- config.template.js
-|   +-- index.html
-|   +-- styles.css
-+-- infra/
-|   +-- terraform/
-|       +-- environments/
-|           +-- dev/
-|               +-- main.tf
-|               +-- outputs.tf
-|               +-- terraform.tfvars.example
-|               +-- variables.tf
-|               +-- versions.tf
-+-- src/
-|   +-- api/
-|       +-- handler.py
-+-- docs/
-    +-- architecture.md
-    +-- cost-control.md
-    +-- gitlab-cicd.md
-    +-- learning-map.md
-    +-- observability.md
-    +-- test-runbook.md
+Navigateur
+  → CloudFront
+  → S3 privé pour le frontend
+
+Navigateur
+  → API Gateway HTTP API
+  → Lambda
+  → DynamoDB
 ```
 
-## Prerequis
+### Flux CI/CD
 
-- AWS CLI configure.
-- Terraform installe.
+```text
+Branche feature
+  → validation
+  → tests
+  → terraform plan
+  → Merge Request
+  → merge vers main
+  → terraform apply
+  → déploiement frontend
+```
+
+## Stack technique
+
+| Domaine | Technologies |
+|---|---|
+| Frontend | HTML, CSS, JavaScript |
+| CDN | Amazon CloudFront |
+| Stockage frontend | Amazon S3 privé |
+| API | Amazon API Gateway HTTP API |
+| Backend | AWS Lambda, Python 3.12 |
+| Base de données | Amazon DynamoDB, mode on-demand |
+| Infrastructure as Code | Terraform |
+| CI/CD | GitLab CI/CD |
+| Authentification CI/CD | GitLab OIDC, AWS STS |
+| État Terraform | GitLab HTTP Remote State |
+| Observabilité | CloudWatch Logs, CloudWatch Alarms |
+| Tests | Pytest |
+
+## Infrastructure as Code
+
+L’infrastructure est provisionnée avec Terraform et comprend notamment :
+
+- un bucket S3 privé pour le frontend ;
+- une distribution CloudFront ;
+- un Origin Access Control pour l’accès CloudFront vers S3 ;
+- une API Gateway HTTP API ;
+- une fonction Lambda Python 3.12 ;
+- une table DynamoDB ;
+- les rôles et policies IAM ;
+- les groupes de logs CloudWatch ;
+- les alarmes CloudWatch ;
+- les rôles GitLab OIDC pour les jobs `plan` et `apply`.
+
+L’état Terraform est stocké dans GitLab via le backend HTTP distant.
+
+## Sécurité
+
+- Bucket S3 non public.
+- Accès au bucket uniquement via CloudFront Origin Access Control.
+- Credentials AWS temporaires obtenus avec GitLab OIDC et AWS STS.
+- Aucune access key AWS permanente requise dans GitLab CI/CD.
+- Rôles distincts pour le plan et le déploiement.
+- Permissions IAM limitées aux ressources IncidentOps.
+- Validation des valeurs de statut côté backend.
+- Protection contre la mise à jour d’un incident inexistant.
+- CORS configuré au niveau API Gateway pour les méthodes nécessaires.
+
+## API
+
+### URL de base
+
+```text
+https://1ji5i8km87.execute-api.eu-west-1.amazonaws.com
+```
+
+### Vérifier l’état de l’API
+
+```http
+GET /health
+```
+
+Exemple de réponse :
+
+```json
+{
+  "status": "healthy",
+  "environment": "dev"
+}
+```
+
+### Lister les incidents
+
+```http
+GET /incidents
+```
+
+### Consulter un incident
+
+```http
+GET /incidents/{id}
+```
+
+### Créer un incident
+
+```http
+POST /incidents
+Content-Type: application/json
+```
+
+```json
+{
+  "title": "API latency elevated",
+  "severity": "high"
+}
+```
+
+### Modifier le statut d’un incident
+
+```http
+PATCH /incidents/{id}
+Content-Type: application/json
+```
+
+```json
+{
+  "status": "investigating"
+}
+```
+
+Valeurs acceptées :
+
+```text
+open
+investigating
+resolved
+```
+
+## Structure du dépôt
+
+```text
+incidentops/
+├── .gitlab-ci.yml
+├── frontend/
+│   ├── app.js
+│   ├── config.template.js
+│   ├── index.html
+│   └── styles.css
+├── infra/
+│   └── terraform/
+│       └── environments/
+│           └── dev/
+│               ├── backend.tf
+│               ├── main.tf
+│               ├── outputs.tf
+│               ├── terraform.tfvars.example
+│               ├── variables.tf
+│               └── versions.tf
+├── src/
+│   └── api/
+│       └── handler.py
+├── tests/
+│   └── test_handler.py
+├── docs/
+│   ├── architecture.md
+│   ├── cost-control.md
+│   ├── gitlab-cicd.md
+│   ├── learning-map.md
+│   ├── observability.md
+│   └── test-runbook.md
+└── README.md
+```
+
+## Prérequis
+
+- Compte AWS.
+- AWS CLI.
+- Terraform.
 - Python 3.12.
-- Compte GitLab avec CI/CD active.
-- Budget AWS configure avant de deployer.
+- Git.
+- Compte GitLab avec CI/CD activé.
+- Budget AWS recommandé avant le déploiement.
 
-## Configuration
-
-Copier l'exemple :
+## Configuration locale
 
 ```powershell
 cd infra/terraform/environments/dev
 Copy-Item terraform.tfvars.example terraform.tfvars
 ```
 
-Exemple de `terraform.tfvars` :
+Exemple :
 
 ```hcl
 aws_region   = "eu-west-1"
@@ -136,171 +278,193 @@ gitlab_project_path  = "your-group/your-project"
 gitlab_deploy_branch = "main"
 
 log_retention_days = 14
-alarm_email        = "your-email@example.com"
 ```
 
-Definitions :
+Ne commitez pas de secrets ni d’informations sensibles dans `terraform.tfvars`.
 
-- `aws_region` : region AWS ou les ressources sont creees.
-- `project_name` : prefixe logique utilise pour nommer les ressources.
-- `environment` : environnement cible, ici `dev`.
-- `enable_gitlab_oidc` : active l'authentification GitLab vers AWS sans access keys longues durees.
-- `gitlab_project_path` : chemin GitLab du repo, par exemple `group/project`.
-- `log_retention_days` : nombre de jours de conservation des logs CloudWatch.
-- `alarm_email` : email qui recoit les alertes SNS.
-
-## Deploiement infrastructure
+## Déploiement Terraform
 
 ```powershell
-cd infra/terraform/environments/dev
-terraform init
-terraform validate
-terraform plan
-terraform apply
-terraform output
+terraform -chdir=infra/terraform/environments/dev init
+terraform -chdir=infra/terraform/environments/dev validate
+terraform -chdir=infra/terraform/environments/dev plan
+terraform -chdir=infra/terraform/environments/dev apply
+terraform -chdir=infra/terraform/environments/dev output
 ```
 
-Definitions :
+Dans le workflow GitLab, l’`apply` est exécuté uniquement après merge vers `main`.
 
-- `terraform plan` montre ce que Terraform va creer ou modifier.
-- `terraform apply` applique les changements dans AWS.
-- `terraform output` affiche les valeurs utiles comme l'URL API, le bucket S3 et la distribution CloudFront.
+## CI/CD
 
-## Deploiement frontend
+### Merge Request
 
-Le frontend est deploye par GitLab CI/CD avec le job manuel `frontend:deploy`.
+- validation Python ;
+- tests Pytest ;
+- validation Terraform ;
+- `terraform plan`.
 
-Variables GitLab CI/CD a configurer :
+### Branche `main`
+
+- `terraform apply` ;
+- déploiement du frontend dans S3 ;
+- invalidation du cache CloudFront.
+
+### Variables CI/CD principales
 
 ```text
-AWS_DEFAULT_REGION=eu-west-1
-AWS_ROLE_ARN=<terraform output gitlab_deploy_role_arn>
-INCIDENTOPS_API_URL=<terraform output api_url>
-SITE_BUCKET_NAME=<terraform output site_bucket_name>
-CLOUDFRONT_DISTRIBUTION_ID=<terraform output cloudfront_distribution_id>
+AWS_DEFAULT_REGION
+AWS_PLAN_ROLE_ARN
+AWS_DEPLOY_ROLE_ARN
+INCIDENTOPS_API_URL
+SITE_BUCKET_NAME
+CLOUDFRONT_DISTRIBUTION_ID
 ```
 
-Le job genere `frontend/config.js`, synchronise le dossier `frontend/` vers S3, puis invalide le cache CloudFront.
+Les rôles AWS sont assumés grâce à GitLab OIDC.
 
-## Tests rapides
-
-Tester l'API :
+## Tests
 
 ```powershell
-cd infra/terraform/environments/dev
-$api = terraform output -raw api_url
-Invoke-RestMethod "$api/incidents"
+python -m pip install pytest
+python -m pytest -v
+python -m py_compile src/api/handler.py
+```
 
-Invoke-RestMethod "$api/incidents" `
+Les tests couvrent notamment :
+
+- le health check ;
+- la liste des incidents ;
+- la création d’un incident ;
+- la mise à jour du statut ;
+- le rejet d’un statut invalide ;
+- les routes inexistantes.
+
+## Tests manuels de l’API
+
+```powershell
+$API_URL = "https://1ji5i8km87.execute-api.eu-west-1.amazonaws.com"
+```
+
+### Lister les incidents
+
+```powershell
+Invoke-RestMethod `
+  -Uri "$API_URL/incidents" `
+  -Method Get
+```
+
+### Créer un incident
+
+```powershell
+$body = @{
+  title    = "Portfolio test"
+  severity = "medium"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri "$API_URL/incidents" `
   -Method Post `
   -ContentType "application/json" `
-  -Body '{"title":"Portfolio test","severity":"medium"}'
-
-Invoke-RestMethod "$api/incidents"
+  -Body $body
 ```
 
-Lire les logs :
+### Modifier un statut
 
 ```powershell
-aws logs tail "/aws/lambda/incidentops-dev-incidents-api" --region eu-west-1 --since 15m
+$body = @{
+  status = "investigating"
+} | ConvertTo-Json
 
-$apiLogs = terraform output -raw api_access_log_group_name
-aws logs tail $apiLogs --region eu-west-1 --since 15m
+Invoke-RestMethod `
+  -Uri "$API_URL/incidents/INCIDENT_ID" `
+  -Method Patch `
+  -ContentType "application/json" `
+  -Body $body
 ```
 
-Tester une alerte email :
+## Observabilité
+
+### Groupes de logs
+
+```text
+/aws/lambda/incidentops-dev-incidents-api
+/aws/apigateway/incidentops-dev-api-access-8e44f88e
+```
+
+### Consulter les logs Lambda
 
 ```powershell
-aws cloudwatch set-alarm-state `
+aws logs tail `
+  "/aws/lambda/incidentops-dev-incidents-api" `
   --region eu-west-1 `
-  --alarm-name "incidentops-dev-lambda-errors" `
-  --state-value ALARM `
-  --state-reason "Manual portfolio test"
+  --since 15m
 ```
 
-Remettre l'alarme a OK :
+### Alarmes CloudWatch
+
+- `incidentops-dev-lambda-errors`
+- `incidentops-dev-api-5xx-errors`
 
 ```powershell
-aws cloudwatch set-alarm-state `
+aws cloudwatch describe-alarms `
+  --alarm-name-prefix "incidentops-dev-" `
   --region eu-west-1 `
-  --alarm-name "incidentops-dev-lambda-errors" `
-  --state-value OK `
-  --state-reason "Manual reset"
+  --query "MetricAlarms[].{Name:AlarmName,State:StateValue,Metric:MetricName}" `
+  --output table
 ```
 
-Commandes detaillees : [docs/test-runbook.md](docs/test-runbook.md).
+## Coûts
 
-## Securite
+Le projet est conçu pour un trafic faible et utilise principalement des services facturés à l’usage :
 
-- Le bucket S3 du frontend n'est pas public.
-- CloudFront accede au bucket via Origin Access Control.
-- Lambda utilise un role IAM limite a la table DynamoDB du projet.
-- GitLab utilise OIDC et AWS STS pour obtenir des credentials temporaires.
-- Les access keys longues durees ne sont pas necessaires pour le deploiement GitLab une fois OIDC active.
+- Lambda ;
+- API Gateway ;
+- DynamoDB on-demand ;
+- S3 ;
+- CloudFront ;
+- CloudWatch.
 
-Definitions :
+La rétention des logs doit rester limitée et un budget AWS est recommandé.
 
-- **IAM least privilege** : donner uniquement les permissions necessaires.
-- **OIDC** : mecanisme d'identite permettant a GitLab de demander des credentials temporaires a AWS.
-- **AWS STS** : service AWS qui genere des credentials temporaires.
-- **OAC** : Origin Access Control, mecanisme CloudFront pour acceder a un bucket S3 prive.
+## Compétences démontrées
 
-## Observabilite
+- Conception d’une architecture AWS serverless.
+- Infrastructure as Code avec Terraform.
+- Gestion d’un état Terraform distant.
+- CI/CD GitLab avec stratégie Merge Request.
+- Fédération d’identité GitLab OIDC vers AWS.
+- Mise en œuvre du principe du moindre privilège IAM.
+- Déploiement d’un frontend statique sécurisé avec S3 et CloudFront.
+- Développement d’une API Lambda connectée à DynamoDB.
+- Configuration CORS d’une HTTP API.
+- Tests unitaires Python avec Pytest.
+- Journalisation et supervision avec CloudWatch.
+- Diagnostic d’erreurs applicatives, IAM et CI/CD.
 
-- CloudWatch Logs collecte les logs Lambda et API Gateway.
-- CloudWatch Alarms surveille les erreurs Lambda et API Gateway.
-- SNS envoie les notifications email.
-- Les logs API Gateway ont une retention configuree par Terraform.
+## Limites assumées
 
-Guide detaille : [docs/observability.md](docs/observability.md).
+Cette version est un MVP portfolio. Elle ne comprend pas encore :
 
-## Cout
+- authentification utilisateur ;
+- domaine personnalisé ;
+- environnement de production séparé ;
+- notifications Slack ou Teams ;
+- historique complet des changements de statut ;
+- dashboard CloudWatch dédié.
 
-Le projet utilise des services adaptes a un faible trafic :
+Ces éléments sont volontairement hors périmètre afin de conserver une architecture lisible et adaptée à un projet portfolio.
 
-- S3 et CloudFront pour un frontend statique.
-- Lambda et API Gateway avec facturation a l'usage.
-- DynamoDB en mode on-demand.
-- Retention limitee des logs.
-
-Un budget AWS est recommande avant tout deploiement. Voir [docs/cost-control.md](docs/cost-control.md).
-
-## Ce que ce projet demontre
-
-- Design d'une architecture serverless.
-- Deploiement Infrastructure as Code avec Terraform.
-- Securisation d'un site statique avec S3 prive et CloudFront.
-- Integration API Gateway, Lambda et DynamoDB.
-- CI/CD GitLab avec deploiement manuel controle.
-- Federation GitLab OIDC vers AWS.
-- Observabilite avec logs, alarmes et notifications email.
-- Maitrise des compromis cout, securite, simplicite et scalabilite.
-
-## Limites actuelles
-
-Le projet est fini pour un MVP portfolio. Les limites actuelles sont volontaires :
-
-- pas d'authentification utilisateur dans l'application ;
-- pas de domaine custom ;
-- pas de backend Terraform distant ;
-- pas de tests automatises complets de l'API ;
-- pas de dashboard CloudWatch dedie.
-
-## Ameliorations possibles
-
-- Ajouter Amazon Cognito pour proteger l'API.
-- Ajouter un domaine custom avec Route 53 et ACM.
-- Ajouter un backend Terraform S3 + DynamoDB lock.
-- Ajouter un dashboard CloudWatch.
-- Ajouter des tests unitaires Python avec `pytest`.
-- Ajouter WAF devant CloudFront.
-- Ajouter un environnement `prod` separe de `dev`.
-
-## Documentation
+## Documentation complémentaire
 
 - [Architecture](docs/architecture.md)
 - [CI/CD GitLab](docs/gitlab-cicd.md)
-- [Observabilite](docs/observability.md)
+- [Observabilité](docs/observability.md)
 - [Runbook de test](docs/test-runbook.md)
-- [Controle des couts](docs/cost-control.md)
-- [Carte d'apprentissage AWS SAA](docs/learning-map.md)
+- [Contrôle des coûts](docs/cost-control.md)
+- [Carte d’apprentissage AWS SAA](docs/learning-map.md)
+
+## Auteur
+
+**Ylhan Fouossue Yemzeue**
+
+Projet DevOps, Cloud et Serverless réalisé avec AWS, Terraform, GitLab CI/CD et Python.
