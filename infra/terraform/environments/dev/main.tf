@@ -223,6 +223,13 @@ resource "aws_apigatewayv2_route" "health" {
   target    = "integrations/${aws_apigatewayv2_integration.api.id}"
 }
 
+resource "aws_apigatewayv2_route" "update_incident" {
+  api_id = aws_apigatewayv2_api.api.id
+
+  route_key = "PATCH /incidents/{id}"
+  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+}
+
 resource "aws_apigatewayv2_route" "list_create_incidents" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "ANY /incidents"

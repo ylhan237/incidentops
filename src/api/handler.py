@@ -10,8 +10,10 @@ logger.setLevel(logging.INFO)
 
 try:
     import boto3
+    from botocore.exceptions import ClientError
 except ImportError:
     boto3 = None
+    ClientError = Exception
 
 
 TABLE_NAME = os.environ.get(
@@ -23,6 +25,11 @@ ENVIRONMENT = os.environ.get(
     "ENVIRONMENT",
     "local",
 )
+VALID_STATUSES = {
+    "open",
+    "investigating",
+    "resolved",
+}
 
 def _response(status_code, body):
     return {
@@ -30,7 +37,7 @@ def _response(status_code, body):
         "headers": {
             "content-type": "application/json",
             "access-control-allow-origin": "*",
-            "access-control-allow-methods": "GET,POST,OPTIONS",
+            "access-control-allow-methods": "GET,POST,PATCH,OPTIONS",
             "access-control-allow-headers": "content-type",
         },
         "body": json.dumps(body, default=_json_default),
@@ -99,6 +106,67 @@ def create_incident(event):
     _table().put_item(Item=item)
     return _response(201, item)
 
+def update_incident_status(event, incident_id):
+    try:
+        payload = json.loads(event.get("body") or "{}")
+    except json.JSONDecodeError:
+        return _response(
+            400,
+            {"message": "Invalid JSON body"},
+        )
+
+    status = str(payload.get("status", "")).strip().lower()
+
+    if status not in VALID_STATUSES:
+        return _response(
+            400,
+            {
+                "message": (
+                    "status must be open, investigating, or resolved"
+                )
+            },
+        )
+
+    now = int(time.time())
+
+    try:
+        result = _table().update_item(
+            Key={
+                "id": incident_id,
+            },
+            UpdateExpression=(
+                "SET #incident_status = :status, "
+                "updatedAt = :updated_at"
+            ),
+            ExpressionAttributeNames={
+                "#incident_status": "status",
+            },
+            ExpressionAttributeValues={
+                ":status": status,
+                ":updated_at": now,
+            },
+            ConditionExpression="attribute_exists(id)",
+            ReturnValues="ALL_NEW",
+        )
+    except ClientError as error:
+        error_code = (
+            error.response
+            .get("Error", {})
+            .get("Code")
+        )
+
+        if error_code == "ConditionalCheckFailedException":
+            return _response(
+                404,
+                {"message": "Incident not found"},
+            )
+
+        raise
+
+    return _response(
+        200,
+        result["Attributes"],
+    )
 
 def handler(event, context):
     try:
@@ -130,6 +198,12 @@ def handler(event, context):
 
         if method == "GET" and incident_id:
             return get_incident(incident_id)
+
+        if method == "PATCH" and incident_id:
+            return update_incident_status(
+                event,
+                incident_id,
+            )
 
         if method == "POST" and raw_path == "/incidents":
             return create_incident(event)
