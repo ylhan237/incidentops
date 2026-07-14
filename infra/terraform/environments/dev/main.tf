@@ -203,12 +203,21 @@ resource "aws_apigatewayv2_api" "api" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_headers = ["content-type"]
-    allow_methods = ["GET", "POST", "OPTIONS"]
-    allow_origins = ["*"]
-  }
+    allow_origins = [
+      "*"
+    ]
 
-  tags = local.common_tags
+    allow_methods = [
+      "GET",
+      "POST",
+      "PATCH",
+      "OPTIONS",
+    ]
+
+    allow_headers = [
+      "content-type",
+    ]
+  }
 }
 
 resource "aws_apigatewayv2_integration" "api" {
