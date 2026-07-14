@@ -147,15 +147,64 @@ function renderIncidents(items) {
             </p>
           </div>
 
-          <div class="incident-badges">
-            <span class="badge badge-${escapeHtml(severity)}">
-              ${escapeHtml(severity)}
-            </span>
+          <div class="incident-card-actions">
+  <div class="incident-badges">
+    <span class="badge badge-${escapeHtml(severity)}">
+      ${escapeHtml(severity)}
+    </span>
 
-            <span class="badge badge-status">
-              ${escapeHtml(status)}
-            </span>
-          </div>
+    <span class="badge badge-status">
+      ${escapeHtml(status)}
+    </span>
+  </div>
+
+  <div class="incident-actions">
+    ${
+      status === "open"
+        ? `
+          <button
+            type="button"
+            class="incident-action-button"
+            data-incident-id="${escapeHtml(item.id)}"
+            data-next-status="investigating"
+          >
+            Prendre en charge
+          </button>
+        `
+        : ""
+    }
+
+    ${
+      status === "investigating"
+        ? `
+          <button
+            type="button"
+            class="incident-action-button"
+            data-incident-id="${escapeHtml(item.id)}"
+            data-next-status="resolved"
+          >
+            Résoudre
+          </button>
+        `
+        : ""
+    }
+
+    ${
+      status === "resolved"
+        ? `
+          <button
+            type="button"
+            class="incident-action-button"
+            data-incident-id="${escapeHtml(item.id)}"
+            data-next-status="open"
+          >
+            Rouvrir
+          </button>
+        `
+        : ""
+    }
+  </div>
+</div>
         </article>
       `;
     })
@@ -165,6 +214,31 @@ function renderIncidents(items) {
 function refreshFilteredView() {
   renderIncidents(getFilteredIncidents());
 }
+incidentsContainer.addEventListener(
+  "click",
+  async (event) => {
+    const button = event.target.closest(
+      "[data-incident-id][data-next-status]"
+    );
+
+    if (!button) {
+      return;
+    }
+
+    const incidentId =
+      button.dataset.incidentId;
+
+    const nextStatus =
+      button.dataset.nextStatus;
+
+    await updateIncidentStatus(
+      incidentId,
+      nextStatus,
+      button
+    );
+  }
+);
+
 
 async function loadIncidents() {
   setFeedback("");
@@ -331,6 +405,95 @@ form.addEventListener(
   createIncident
 );
 
+async function updateIncidentStatus(
+  incidentId,
+  nextStatus,
+  button
+) {
+  const previousText = button.textContent;
+
+  button.disabled = true;
+  button.textContent = "Mise à jour…";
+
+  setFeedback("");
+
+  try {
+    if (!API_URL) {
+      incidentState = incidentState.map((incident) =>
+        incident.id === incidentId
+          ? {
+              ...incident,
+              status: nextStatus,
+              updatedAt: Math.floor(Date.now() / 1000),
+            }
+          : incident
+      );
+
+      saveLocalIncidents(incidentState);
+      refreshFilteredView();
+
+      setFeedback(
+        "Statut mis à jour localement.",
+        "success"
+      );
+
+      return;
+    }
+
+    const response = await fetch(
+      `${API_URL}/incidents/${encodeURIComponent(
+        incidentId
+      )}`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          status: nextStatus,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+
+      throw new Error(
+        errorBody || `HTTP ${response.status}`
+      );
+    }
+
+    const updatedIncident = await response.json();
+
+    incidentState = incidentState.map((incident) =>
+      incident.id === incidentId
+        ? updatedIncident
+        : incident
+    );
+
+    refreshFilteredView();
+
+    const labels = {
+      open: "rouvert",
+      investigating: "pris en charge",
+      resolved: "résolu",
+    };
+
+    setFeedback(
+      `Incident ${labels[nextStatus] ?? "mis à jour"}.`,
+      "success"
+    );
+  } catch (error) {
+    setFeedback(
+      `Mise à jour impossible : ${error.message}`,
+      "error"
+    );
+
+    button.disabled = false;
+    button.textContent = previousText;
+  }
+}
+
 refreshButton.addEventListener(
   "click",
   loadIncidents
@@ -344,6 +507,25 @@ searchInput.addEventListener(
 severityFilter.addEventListener(
   "change",
   refreshFilteredView
+);
+
+incidentsContainer.addEventListener(
+  "click",
+  async (event) => {
+    const button = event.target.closest(
+      "[data-incident-id][data-next-status]"
+    );
+
+    if (!button) {
+      return;
+    }
+
+    await updateIncidentStatus(
+      button.dataset.incidentId,
+      button.dataset.nextStatus,
+      button
+    );
+  }
 );
 
 loadIncidents();
