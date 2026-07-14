@@ -66,43 +66,34 @@ terraform:plan:
     - when: never
 
   script:
-    - |
-      set -eu
+  - |
+    set -eu
+    apk add --no-cache unzip
+    export TF_HTTP_ADDRESS="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+    export TF_HTTP_LOCK_ADDRESS="${TF_HTTP_ADDRESS}/lock"
+    export TF_HTTP_UNLOCK_ADDRESS="${TF_HTTP_ADDRESS}/lock"
+    export TF_HTTP_USERNAME="gitlab-ci-token"
+    export TF_HTTP_PASSWORD="${CI_JOB_TOKEN}"
+    export TF_HTTP_LOCK_METHOD="POST"
+    export TF_HTTP_UNLOCK_METHOD="DELETE"
+    export TF_HTTP_RETRY_WAIT_MIN="5"
 
-      test -n "${CI_JOB_TOKEN:-}" ||
-        { echo "CI_JOB_TOKEN is missing"; exit 1; }
+    export AWS_ROLE_ARN="${AWS_PLAN_ROLE_ARN}"
+    export AWS_ROLE_SESSION_NAME="GitLab-Plan-${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
+    printf '%s' "${GITLAB_OIDC_TOKEN}" > /tmp/gitlab-oidc-token
+    export AWS_WEB_IDENTITY_TOKEN_FILE="/tmp/gitlab-oidc-token"
 
-      test -n "${AWS_PLAN_ROLE_ARN:-}" ||
-        { echo "AWS_PLAN_ROLE_ARN is missing"; exit 1; }
+    rm -f "${TF_ROOT}/api.zip"
 
-      test -n "${GITLAB_OIDC_TOKEN:-}" ||
-        { echo "GITLAB_OIDC_TOKEN is missing"; exit 1; }
+    terraform -chdir="${TF_ROOT}" init -reconfigure
+    terraform -chdir="${TF_ROOT}" plan -out=tfplan
+    terraform -chdir="${TF_ROOT}" show -no-color tfplan > "${TF_ROOT}/tfplan.txt"
 
-      # Authentification du backend GitLab.
-      export TF_HTTP_ADDRESS="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
-      export TF_HTTP_LOCK_ADDRESS="${TF_HTTP_ADDRESS}/lock"
-      export TF_HTTP_UNLOCK_ADDRESS="${TF_HTTP_ADDRESS}/lock"
-      export TF_HTTP_USERNAME="gitlab-ci-token"
-      export TF_HTTP_PASSWORD="${CI_JOB_TOKEN}"
-      export TF_HTTP_LOCK_METHOD="POST"
-      export TF_HTTP_UNLOCK_METHOD="DELETE"
-      export TF_HTTP_RETRY_WAIT_MIN="5"
+    test -f "${TF_ROOT}/api.zip"
 
-      # Authentification AWS OIDC avec le rôle de lecture.
-      export AWS_ROLE_ARN="${AWS_PLAN_ROLE_ARN}"
-      export AWS_ROLE_SESSION_NAME="GitLab-Plan-${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
-      printf '%s' "${GITLAB_OIDC_TOKEN}" > /tmp/gitlab-oidc-token
-      export AWS_WEB_IDENTITY_TOKEN_FILE="/tmp/gitlab-oidc-token"
-
-      echo "State utilisé : ${TF_STATE_NAME}"
-      echo "Rôle AWS utilisé : ${AWS_ROLE_ARN}"
-
-      terraform -chdir="${TF_ROOT}" init -reconfigure
-      terraform -chdir="${TF_ROOT}" plan -out=tfplan
-      terraform -chdir="${TF_ROOT}" show -no-color tfplan > "${TF_ROOT}/tfplan.txt"
-
-      test -f "${TF_ROOT}/tfplan" ||
-        { echo "tfplan was not created"; exit 1; }
+    unzip -l "${TF_ROOT}/api.zip"
+    unzip -p "${TF_ROOT}/api.zip" handler.py |
+      grep -E "Processing request|Unhandled error"
 
   artifacts:
     paths:
@@ -137,7 +128,7 @@ terraform:apply:
   script:
     - |
       set -eu
-
+      apk add --no-cache unzip
       test -n "${CI_JOB_TOKEN:-}" ||
         { echo "CI_JOB_TOKEN is missing"; exit 1; }
 
@@ -168,7 +159,8 @@ terraform:apply:
 
       test -f "${TF_ROOT}/tfplan" ||
         { echo "Terraform plan artifact is missing"; exit 1; }
-
+      test -f "$TF_ROOT/api.zip"
+      unzip -p "$TF_ROOT/api.zip" handler.py | grep -E "Processing request|Unhandled error"
       terraform -chdir="${TF_ROOT}" init -reconfigure
       terraform -chdir="${TF_ROOT}" apply tfplan
 
