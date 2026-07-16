@@ -27,11 +27,17 @@ open → investigating → resolved → open
 
 ## Aperçu
 
-<!-- Ajouter les captures dans docs/screenshots/ -->
+### Dashboard
 
 ![Dashboard IncidentOps](docs/screenshots/dashboard.png)
 
+### Pipeline GitLab CI/CD
+
 ![Pipeline GitLab CI/CD](docs/screenshots/gitlab-pipeline.png)
+
+### Supervision CloudWatch
+
+![Alarmes CloudWatch IncidentOps](docs/screenshots/cloudwatch-alarms.png)
 
 ## Fonctionnalités
 
@@ -49,54 +55,48 @@ open → investigating → resolved → open
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    U[Utilisateur] --> CF[Amazon CloudFront]
-    CF --> S3[Amazon S3 privé]
+L’architecture est documentée sous deux angles complémentaires :
 
-    U --> APIGW[API Gateway HTTP API]
-    APIGW --> L[AWS Lambda Python 3.12]
-    L --> DDB[Amazon DynamoDB]
+1. **Architecture applicative AWS** : parcours d’une requête utilisateur, hébergement du frontend, API serverless, persistance et observabilité.
+2. **Architecture de déploiement** : GitLab CI/CD, OIDC, AWS STS, rôles IAM, Terraform Remote State et publication du frontend.
 
-    L --> CWL[CloudWatch Logs]
-    APIGW --> CWA[API Gateway Access Logs]
+### Architecture applicative AWS
 
-    CWL --> AL1[Alarme erreurs Lambda]
-    CWA --> AL2[Alarme erreurs API 5xx]
+![Architecture applicative IncidentOps](docs/architecture/incidentops-application-architecture.png)
 
-    GL[GitLab CI/CD] --> OIDC[GitLab OIDC]
-    OIDC --> STS[AWS STS]
-    STS --> IAM[AWS IAM Roles]
-
-    GL --> TF[Terraform]
-    TF --> IAM
-```
-
-### Flux applicatif
+Le frontend est distribué par CloudFront depuis un bucket S3 privé accessible uniquement au moyen d’un Origin Access Control. Le navigateur appelle l’API Gateway HTTP API, qui invoque la fonction Lambda. Lambda applique la logique métier et lit ou modifie les incidents dans DynamoDB. Les journaux et les métriques sont centralisés dans CloudWatch.
 
 ```text
-Navigateur
-  → CloudFront
-  → S3 privé pour le frontend
-
-Navigateur
-  → API Gateway HTTP API
-  → Lambda
-  → DynamoDB
+Utilisateur
+  ├── CloudFront → S3 privé
+  └── API Gateway → Lambda → DynamoDB
+                         └── CloudWatch Logs et alarmes
 ```
 
-### Flux CI/CD
+### Architecture de déploiement GitLab CI/CD
+
+![Architecture de déploiement IncidentOps](docs/architecture/incidentops-deployment-architecture.png)
+
+Les Merge Requests exécutent les validations, les tests et `terraform plan`. Après fusion dans `main`, la pipeline peut appliquer l’infrastructure et publier le frontend. GitLab s’authentifie auprès d’AWS grâce à OIDC ; AWS STS fournit ensuite des identifiants temporaires associés au rôle IAM approprié.
 
 ```text
 Branche feature
-  → validation
-  → tests
+  → tests et validations
   → terraform plan
   → Merge Request
   → merge vers main
   → terraform apply
-  → déploiement frontend
+  → génération de config.js
+  → synchronisation S3
+  → invalidation CloudFront
 ```
+
+### Sources Draw.io
+
+Les versions modifiables des diagrammes sont conservées dans le dépôt :
+
+- [`incidentops-application-architecture.drawio`](docs/architecture/incidentops-application-architecture.drawio)
+- [`incidentops-deployment-architecture.drawio`](docs/architecture/incidentops-deployment-architecture.drawio)
 
 ## Stack technique
 
@@ -240,6 +240,15 @@ incidentops/
 ├── tests/
 │   └── test_handler.py
 ├── docs/
+│   ├── architecture/
+│   │   ├── incidentops-application-architecture.drawio
+│   │   ├── incidentops-application-architecture.png
+│   │   ├── incidentops-deployment-architecture.drawio
+│   │   └── incidentops-deployment-architecture.png
+│   ├── screenshots/
+│   │   ├── dashboard.png
+│   │   ├── gitlab-pipeline.png
+│   │   └── cloudwatch-alarms.png
 │   ├── architecture.md
 │   ├── cost-control.md
 │   ├── gitlab-cicd.md
