@@ -91,13 +91,6 @@ Branche feature
   → invalidation CloudFront
 ```
 
-### Sources Draw.io
-
-Les versions modifiables des diagrammes sont conservées dans le dépôt :
-
-- [`incidentops-application-architecture.drawio`](docs/architecture/incidentops-application-architecture.drawio)
-- [`incidentops-deployment-architecture.drawio`](docs/architecture/incidentops-deployment-architecture.drawio)
-
 ## Stack technique
 
 | Domaine | Technologies |
@@ -289,7 +282,7 @@ gitlab_deploy_branch = "main"
 log_retention_days = 14
 ```
 
-Ne commitez pas de secrets ni d’informations sensibles dans `terraform.tfvars`.
+NOus avons pas commite de secrets ni d’informations sensibles dans `terraform.tfvars`.
 
 ## Déploiement Terraform
 
@@ -433,7 +426,7 @@ Le projet est conçu pour un trafic faible et utilise principalement des service
 - CloudFront ;
 - CloudWatch.
 
-La rétention des logs doit rester limitée et un budget AWS est recommandé.
+La rétention des logs a été limitée pour pourvoir reduire le budget AWS.
 
 ## Compétences démontrées
 
@@ -461,8 +454,6 @@ Cette version est un MVP portfolio. Elle ne comprend pas encore :
 - historique complet des changements de statut ;
 - dashboard CloudWatch dédié.
 
-Ces éléments sont volontairement hors périmètre afin de conserver une architecture lisible et adaptée à un projet portfolio.
-
 ## Documentation complémentaire
 
 - [Architecture](docs/architecture.md)
@@ -470,7 +461,6 @@ Ces éléments sont volontairement hors périmètre afin de conserver une archit
 - [Observabilité](docs/observability.md)
 - [Runbook de test](docs/test-runbook.md)
 - [Contrôle des coûts](docs/cost-control.md)
-- [Carte d’apprentissage AWS SAA](docs/learning-map.md)
 
 ## Auteur
 
