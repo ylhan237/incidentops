@@ -223,20 +223,53 @@ frontend:deploy:
 
 terraform:destroy:
   stage: destroy
+
   image:
     name: hashicorp/terraform:1.9
     entrypoint: [""]
 
   id_tokens:
     GITLAB_OIDC_TOKEN:
-      aud: https://gitlab.com
+      aud: sts.amazonaws.com
 
   variables:
     TF_IN_AUTOMATION: "true"
 
-  before_script:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: false
+    - when: never
+
+  resource_group: incidentops-dev-infrastructure
+  interruptible: false
+
+  script:
     - |
       set -eu
+
+      echo "============================================"
+      echo "ATTENTION : JOB TERRAFORM DESTROY"
+      echo "Pipeline : ${CI_PIPELINE_ID}"
+      echo "Branche  : ${CI_COMMIT_BRANCH}"
+      echo "State    : ${TF_STATE_NAME}"
+      echo "============================================"
+
+      if [ "${CONFIRM_DESTROY:-}" != "DESTROY_INCIDENTOPS" ]; then
+        echo "Destruction refusée."
+        echo "Variable requise :"
+        echo "CONFIRM_DESTROY=DESTROY_INCIDENTOPS"
+        exit 1
+      fi
+
+      test -n "${CI_JOB_TOKEN:-}" ||
+        { echo "CI_JOB_TOKEN is missing"; exit 1; }
+
+      test -n "${AWS_DEPLOY_ROLE_ARN:-}" ||
+        { echo "AWS_DEPLOY_ROLE_ARN is missing"; exit 1; }
+
+      test -n "${GITLAB_OIDC_TOKEN:-}" ||
+        { echo "GITLAB_OIDC_TOKEN is missing"; exit 1; }
 
       export TF_HTTP_ADDRESS="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
       export TF_HTTP_LOCK_ADDRESS="${TF_HTTP_ADDRESS}/lock"
@@ -255,29 +288,22 @@ terraform:destroy:
 
       terraform -chdir="${TF_ROOT}" init -reconfigure
 
-  script:
-    - |
-      if [ "${CONFIRM_DESTROY:-}" != "DESTROY_INCIDENTOPS" ]; then
-        echo "Destruction refusée."
-        echo "Lance le job avec la variable :"
-        echo "CONFIRM_DESTROY=DESTROY_INCIDENTOPS"
-        exit 1
-      fi
+      echo "Création du plan de destruction..."
 
-    - terraform -chdir="${TF_ROOT}" plan -destroy -out=destroy.tfplan
+      terraform -chdir="${TF_ROOT}" plan \
+        -destroy \
+        -out=destroy.tfplan
 
-    - terraform -chdir="${TF_ROOT}" show -no-color destroy.tfplan
+      echo "Affichage du plan de destruction..."
 
-    - terraform -chdir="${TF_ROOT}" apply -auto-approve destroy.tfplan
+      terraform -chdir="${TF_ROOT}" show \
+        -no-color \
+        destroy.tfplan
 
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
-      when: manual
-      allow_failure: false
-    - when: never
+      echo "Application du plan de destruction..."
 
-  resource_group: incidentops-dev-infrastructure
+      terraform -chdir="${TF_ROOT}" apply \
+        -auto-approve \
+        destroy.tfplan
 
-  environment:
-    name: dev
-    action: stop
+      echo "Infrastructure IncidentOps détruite."
