@@ -3,6 +3,7 @@ stages:
   - validate
   - plan
   - deploy
+  - destroy
 
 variables:
   TF_ROOT: "infra/terraform/environments/dev"
@@ -219,3 +220,64 @@ frontend:deploy:
       aws cloudfront create-invalidation \
         --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" \
         --paths "/*"
+
+terraform:destroy:
+  stage: destroy
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://gitlab.com
+
+  variables:
+    TF_IN_AUTOMATION: "true"
+
+  before_script:
+    - |
+      set -eu
+
+      export TF_HTTP_ADDRESS="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+      export TF_HTTP_LOCK_ADDRESS="${TF_HTTP_ADDRESS}/lock"
+      export TF_HTTP_UNLOCK_ADDRESS="${TF_HTTP_ADDRESS}/lock"
+      export TF_HTTP_USERNAME="gitlab-ci-token"
+      export TF_HTTP_PASSWORD="${CI_JOB_TOKEN}"
+      export TF_HTTP_LOCK_METHOD="POST"
+      export TF_HTTP_UNLOCK_METHOD="DELETE"
+      export TF_HTTP_RETRY_WAIT_MIN="5"
+
+      export AWS_ROLE_ARN="${AWS_DEPLOY_ROLE_ARN}"
+      export AWS_ROLE_SESSION_NAME="GitLab-Destroy-${CI_PROJECT_ID}-${CI_PIPELINE_ID}"
+
+      printf '%s' "${GITLAB_OIDC_TOKEN}" > /tmp/gitlab-oidc-token
+      export AWS_WEB_IDENTITY_TOKEN_FILE="/tmp/gitlab-oidc-token"
+
+      terraform -chdir="${TF_ROOT}" init -reconfigure
+
+  script:
+    - |
+      if [ "${CONFIRM_DESTROY:-}" != "DESTROY_INCIDENTOPS" ]; then
+        echo "Destruction refusée."
+        echo "Lance le job avec la variable :"
+        echo "CONFIRM_DESTROY=DESTROY_INCIDENTOPS"
+        exit 1
+      fi
+
+    - terraform -chdir="${TF_ROOT}" plan -destroy -out=destroy.tfplan
+
+    - terraform -chdir="${TF_ROOT}" show -no-color destroy.tfplan
+
+    - terraform -chdir="${TF_ROOT}" apply -auto-approve destroy.tfplan
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: false
+    - when: never
+
+  resource_group: incidentops-dev-infrastructure
+
+  environment:
+    name: dev
+    action: stop
